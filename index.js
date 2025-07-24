@@ -36,7 +36,7 @@ mongoose
 
 // Health check route
 app.get("/api/health", (req, res) => {
-	res.json({ message: "Web Shop API Server is running!" });
+	res.json({ message: "Healthn OK!" });
 });
 
 // API Routes
