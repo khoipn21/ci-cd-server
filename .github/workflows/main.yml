@@ -1,0 +1,129 @@
+name: Deploy Backend to VPS
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.VPS_PORT || '22' }}
+          script: |
+            set -e
+            echo "🚀 Starting backend deployment..."
+
+            # Install Node.js if not available
+            if ! command -v node &> /dev/null; then
+              # Download and install nvm:
+              curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+              # in lieu of restarting the shell
+              . "$HOME/.nvm/nvm.sh"
+              # Download and install Node.js:
+              nvm install 22
+              nvm use 22
+            fi
+
+            # Navigate to app directory
+            cd ${{ secrets.APP_PATH }}
+
+            # Create environment file
+            cat > .env << 'EOF'
+            PORT=${{ secrets.PORT }}
+            MONGODB_URI=${{ secrets.MONGODB_URI }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            JWT_EXPIRE=${{ secrets.JWT_EXPIRE }}
+            CORS_ORIGIN=${{ secrets.CORS_ORIGIN }}
+            EOF
+
+            # Set proper permissions
+            chmod 600 .env
+
+            # Pull latest changes
+            git pull origin master
+
+            # Install dependencies
+            npm ci --production
+
+            npm run seed
+
+            # Run database migrations if they exist
+            if grep -q '"type": "module"' package.json; then
+            echo "Creating ES module compatible ecosystem config..."
+            cat > ecosystem.config.cjs << 'EOF'
+            module.exports = {
+                apps: [{
+                name: 'backend-api',
+                script: './index.js',
+                instances: 1,
+                autorestart: true,
+                watch: false,
+                max_memory_restart: '1G',
+                env: {
+                  NODE_ENV: 'production',
+                  PORT: 3000
+                }
+              }]
+            }
+            EOF
+            else
+              echo "Creating CommonJS ecosystem config..."
+              cat > ecosystem.config.js << 'EOF'
+            module.exports = {
+              apps: [{
+                name: 'backend-api',
+                script: './index.js',
+                instances: 1,
+                autorestart: true,
+                watch: false,
+                max_memory_restart: '1G',
+                env: {
+                  NODE_ENV: 'production',
+                  PORT: 3000
+                }
+              }]
+            }
+            EOF
+            fi
+
+            # Restart PM2 process
+            if [ -f "ecosystem.config.cjs" ]; then
+              pm2 start ecosystem.config.cjs
+            else
+              pm2 start ecosystem.config.js
+            fi
+
+            # Save PM2 configuration
+            pm2 save
+
+            echo "✅ Backend deployment completed successfully!"
+
+      - name: Health Check
+        run: |
+          sleep 30
+          curl -f https://serverdevops.khoipn.id.vn/api/products
