@@ -52,6 +52,14 @@ jobs:
             # Navigate to app directory
             cd ${{ secrets.APP_PATH }}
 
+            # Clone repository if it doesn't exist, otherwise pull latest
+            if [ ! -d ".git" ]; then
+              git clone https://github.com/${{ github.repository }} .
+            else
+              git fetch origin
+              git reset --hard origin/master
+            fi
+
             # Create environment file
             cat > .env << 'EOF'
             PORT=${{ secrets.PORT }}
@@ -63,9 +71,6 @@ jobs:
 
             # Set proper permissions
             chmod 600 .env
-
-            # Pull latest changes
-            git pull origin master
 
             # Install dependencies
             npm ci --production
