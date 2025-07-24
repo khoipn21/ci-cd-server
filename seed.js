@@ -147,6 +147,14 @@ const seedDatabase = async () => {
     console.log('Connected to MongoDB');
 
     // Clear existing data
+    const existingUsers = await User.countDocuments();
+    const existingProducts = await Product.countDocuments();
+
+    if (existingUsers > 0 || existingProducts > 0) {
+      console.log('Database already has data, skipping seed');
+      return;
+    }
+
     await User.deleteMany({});
     await Product.deleteMany({});
     console.log('Cleared existing data');
