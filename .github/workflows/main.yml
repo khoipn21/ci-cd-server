@@ -131,4 +131,4 @@ jobs:
       - name: Health Check
         run: |
           sleep 30
-          curl -f https://serverdevops.khoipn.id.vn/api/products
+          curl -f https://serverdevops.khoipn.id.vn/api/health
